@@ -48,6 +48,10 @@ globalThis.MainSettings = (
     THOUGHT_FORMATION_CHANCE_PER_TURN: 60
     // (0 to 100)
     ,
+    // Is the thought formation chance reduced by half during Do/Say/Story turns?
+    IS_THOUGHT_CHANCE_HALF_FOR_DO_SAY_STORY: true
+    // (true or false)
+    ,
     // Is the "Configure Inner Self" story card pinned near the top of the in-game list?
     IS_CONFIG_CARD_PINNED_BY_DEFAULT: false
     // (true or false)
@@ -235,7 +239,8 @@ function NarratorBrain(hook) {
     // (1, 2, or 3)
     ,
     // What (maximum) percentage of "Recent Story" context should be repurposed for narrator brain?
-    PERCENTAGE_OF_RECENT_STORY_USED_FOR_NARRATOR: 20
+    // Note: Unlike InnerSelf, narrator-brain is a single brain (no competition), so use a lower value
+    PERCENTAGE_OF_RECENT_STORY_USED_FOR_NARRATOR: 10
     // (1 to 95)
     ,
     // Symbol shown when narrator brain is active?
@@ -249,6 +254,10 @@ function NarratorBrain(hook) {
     // When possible, what percentage of turns should involve an attempt to form a new thought?
     THOUGHT_FORMATION_CHANCE_PER_TURN: 25
     // (0 to 100)
+    ,
+    // Is the thought formation chance reduced by half during Do/Say/Story turns?
+    IS_THOUGHT_CHANCE_HALF_FOR_DO_SAY_STORY: true
+    // (true or false)
     ,
     // Is the "Configure Narrator Brain" story card pinned near the top of the in-game list?
     IS_CONFIG_CARD_PINNED_BY_DEFAULT: false
@@ -467,10 +476,11 @@ function NarratorBrain(hook) {
             guide: false,
             player: "",
             pov: 2,
-            percent: 30,
+            percent: 10,
             indicatorActive: "🎬",
             indicatorThinking: "💡",
             chance: 25,
+            half: true,
             pin: false,
             auto: false,
             debug: false
@@ -627,6 +637,9 @@ function NarratorBrain(hook) {
                 { message: "Thought formation chance per turn:", ...factory(
                     "chance", S.THOUGHT_FORMATION_CHANCE_PER_TURN,
                     { lower: 0, upper: 100, suffix: "%" }
+                ) },
+                { message: "Half thought chance for Do/Say/Story:", ...factory(
+                    "half", S.IS_THOUGHT_CHANCE_HALF_FOR_DO_SAY_STORY
                 ) },
                 { message: "Pin this config card near the top:", ...factory(
                     "pin", S.IS_CONFIG_CARD_PINNED_BY_DEFAULT
@@ -828,11 +841,11 @@ function NarratorBrain(hook) {
          * Creates a new Narrator instance
          * Finds or creates the story director brain card automatically
          * @param {Object} [options] - Optional settings
-         * @param {number} [options.percent=20] - Context reserved for brain
+         * @param {number} [options.percent=10] - Context reserved for brain
          * @param {string} [options.indicatorActive="🎬"] - Indicator when active
          * @param {string} [options.indicatorThinking="💡"] - Indicator when thinking
          */
-        constructor({ percent = 20, indicatorActive = "🎬", indicatorThinking = "💡" } = {}) {
+        constructor({ percent = 10, indicatorActive = "🎬", indicatorThinking = "💡" } = {}) {
             this.#indicator = { active: indicatorActive, thinking: indicatorThinking };
             this.#percent = percent;
             this.name = "Narrator";
@@ -1574,10 +1587,10 @@ Follow the format **perfectly**.
                 // Brain is full, prompt for deletion
                 (NB.thinking = true),
                 `${prompt.directive[pov]}${self}${text.trim()}${boundary.lower}${prompt.forget[pov]}\n\n`
-            ) : ((config.chance / ([
-                // Reduce task chance after Do/Say/Story actions (player is driving)
+            ) : ((config.chance / ((config.half && [
+                // config.half -> reduce task chance after Do/Say/Story actions (player is driving)
                 "do", "say", "story"
-            ].includes(getPrevAction()?.type) ? 200 : 100)) < Math.random()) ? (
+            ].includes(getPrevAction()?.type)) ? 200 : 100)) < Math.random()) ? (
                 // Sometimes do nothing - no new thought
                 (NB.thinking = false),
                 `${nondirective()}${self}${text.trim()} `
@@ -2256,6 +2269,8 @@ I hope you will have lots of fun!
                 || /^\[?\d+(?:\.?\]|\.)/.test(lower)
                 // Remove stray "user" labels from ChatML imitation
                 || /^\s*user(?:$|[^a-z])/.test(lower)
+                // Remove lines containing only " " and/or "-"
+                || /^[ -]+$/.test(lower)
             );
         })
         .join("\n")
