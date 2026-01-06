@@ -6,7 +6,8 @@
  * Most AC and Inner Self settings are included
  * Safe to delete
  */
-globalThis.MainSettings = (class MainSettings {
+globalThis.MainSettings = (
+    class MainSettings {
 
     //—————————————————————————————————————————————————————————————————————————————————
 
@@ -1297,553 +1298,265 @@ function NarratorBrain(hook) {
              * @param {boolean} fancy - Use fancier wording if true
              * @returns {string} Future planning instruction or empty string
              */
-            const refocus = (fancy = false) => (Math.random() < 0.2) ? (
-                `\n  - Focus on future story developments and long-term narrative planning rather than immediate events`
+            const refocus = (fancy = false) => (Math.random() < 0.35) ? (
+                `\n  - Focus exclusively on future story developments and long-term narrative planning`
             ) : "";
+            
+            // ==================== POV-SPECIFIC DATA ====================
+            // Centralized PoV variations to reduce prompt duplication
+            const povData = {
+                first: {
+                    context: `- ${config.player} is the story's main protagonist, primary 1st person PoV, AND the real player character`,
+                    continuation: `Written from ${ownership(config.player)} **first person present tense** PoV`,
+                    person: 'first person',
+                    storyRule: `written **strictly in the first person present tense**, describing what happens next to ${config.player}`,
+                    forgetShape: `Story continues from ${ownership(config.player)} perspective, using first person present tense prose...`,
+                    assignShape: `Story continues from ${ownership(config.player)} perspective, using first person present tense prose...`,
+                    summaryStory: `Written from ${ownership(config.player)} first person present tense perspective.`
+                },
+                second: {
+                    context: `- ${config.player} is the perspective ("you") character AND the real player\n- The story is addressed to "you" using 2nd person prose`,
+                    continuation: `Written from ${ownership(config.player)} **second person** ("you") perspective`,
+                    person: 'second person',
+                    storyRule: `in **strict second person ("you")**, describing what happens next to ${config.player}`,
+                    forgetShape: `Story continues from ${ownership(config.player)} second person perspective...`,
+                    assignShape: `Story continues from ${ownership(config.player)} second person perspective...`,
+                    summaryStory: `Written from ${ownership(config.player)} second person present tense perspective. **You are ${config.player}.**`
+                },
+                third: {
+                    context: `- ${config.player} is the story's main protagonist, primary 3rd person PoV, AND the real player character`,
+                    continuation: `Written from ${ownership(config.player)} **third person** perspective`,
+                    person: 'third person',
+                    storyRule: `written **strictly in third person**`,
+                    forgetShape: `Story continues with third person prose...`,
+                    assignShape: `Story continues with third person prose...`,
+                    summaryStory: `Written from ${ownership(config.player)} PoV, using the third person perspective. **${config.player} is the story's PoV character.**`
+                }
+            };
+            
+            // ==================== SHARED PROMPT SECTIONS ====================
+            // Common text blocks used across multiple prompts
+            const shared = {
+                keyRules: `  - 1-4 descriptive words describing the narrative element
+  - Letters and underscores only
+  - Use snake_case syntax
+  - Examples: plot_tension, foreshadow_event, pacing_note, unresolved_thread, next_conflict`,
+                
+                keyRulesFancy: `  - One to four descriptive words describing the narrative element.
+  - Letters and underscores only, no punctuation.
+  - Use valid snake_case syntax.
+  - Examples: plot_tension, foreshadow_event, pacing_note, unresolved_thread`,
+                
+                planningNote: (fancy) => `  - Written from the Story Director's meta-narrative perspective${fancy ? '.' : ''}${refocus(fancy)}
+  - Reflect on how current events will pay off later, new elments to introduce, character development that needs to be explored, or other story elements that need to be addressed.
+  - Never simply restate what just occurred${fancy ? `
+  - Never repeat, novelty and uniqueness are top priorities.
+  - Must be short.` : `
+  - One sentence only`}
+  - Never hallucinate facts${fancy ? '.' : ''}`,
+                
+                deleteRules: `- key_name_to_forget must be an existing key in the Story Director's brain
+- This operation **permanently erases** the stored narrative priority associated with that key
+- Choose the single most unimportant, outdated, incorrect, useless, or fully resolved narrative priority to forget
+- Do **NOT** delete core narrative priorities, important ongoing plot threads, or unresolved story elements`,
+                
+                renameSection: `## 2) RENAMING A THOUGHT (KEY CHANGE)
+To rename an existing thought's key:
+   **(new_key_name = old_key_name)**
+
+Rules:
+- No thought sentence.
+- Use snake_case only.
+- This operation **moves the existing stored thought** from old_key_name to new_key_name.
+- The old key ceases to exist.`,
+                
+                deleteSection: `## 3) DELETING A THOUGHT
+To remove a stored thought entirely:
+   **(delete key_name_to_forget)**
+
+Rules:
+- key_name_to_forget must be an existing key.
+- No sentence.
+- This operation **permanently erases** the stored narrative priority associated with that key.
+- Only use to forget unimportant, fully resolved, outdated, incorrect, or useless narrative priorities.
+- **NEVER** delete core narrative priorities, important ongoing plot threads, or critical unresolved story elements.`,
+                
+                // Storage behavior - neutral about deletion, matching InnerSelf
+                storageBehavior: `## IMPORTANT STORAGE BEHAVIOR
+- The Story Director agentically maintains narrative priorities to plan and guide story development.
+- **Each key stores exactly one narrative priority in the Story Director's brain.**
+- **If a key is reused, the new priority REPLACES / OVERRIDES the older priority stored under that key.**
+- This means:
+  - Reusing an old key: **Update an existing narrative priority.** Useful for tracking evolving plot threads.
+  - Using a new key: **Create a new narrative priority.** Useful for planning future beats, tracking foreshadowing, managing pacing, or identifying key new elements.
+- **Renaming a key moves the priority to a new name.** Useful for reorganizing the brain.
+- **Deleting a key removes the priority permanently.** Useful for removing resolved or obsolete plot threads.
+- Choose keys carefully for easy recall, update, rename, or delete as the story evolves.`
+            };
+            
+            // ==================== PROMPT BUILDERS ====================
+            // Functions that construct full prompts from shared components
+            
+            const buildDirective = (pov) => `
+<SYSTEM>
+# OPERATING ENVIRONMENT
+${povData[pov].context}
+- You are the Story Director - an agentic narrative planner with meta-level story awareness
+- Your brain (shown below) contains active narrative priorities that guide story development
+- **Actively incorporate the brain's priorities into your story continuation**
+- Use the brain to maintain plot threads, track foreshadowing, manage pacing, and plan future beats
+- You prioritize long-term narrative coherence and engaging storytelling
+</SYSTEM>
+            `;
+            
+            const buildForget = (pov) => `
+<SYSTEM>
+# STRICT OUTPUT FORMAT
+You must output one short parenthetical task followed by the story continuation.
+
+## SHORT TASK (REQUIRED)
+- Start your output **immediately** with: (delete key_name_to_forget)
+${shared.deleteRules}
+
+## STORY CONTINUATION (REQUIRED)
+- After the closing parenthesis, write **one space** and then continue the story
+- ${povData[pov].continuation}
+- The story continues where it previously left off, with many lines or sentences of new prose
+
+## EXACT SHAPE
+(delete unwanted_key) ${povData[pov].forgetShape}
+</SYSTEM>
+            `;
+            
+            const buildAssign = (pov) => `
+<SYSTEM>
+# STRICT OUTPUT FORMAT
+You must output one short parenthetical task followed by the story continuation.
+
+## SHORT TASK (REQUIRED)
+Start your output **immediately** with:
+   (any_key_name = \`One planning sentence.\`)
+
+Inside the parentheses:
+- Key:
+${shared.keyRules}
+- Then a space, then "=", then a space, then "\`"
+- Sentence (THE STORY DIRECTOR'S PLANNING NOTE):
+${shared.planningNote(false)}
+- End the sentence with a period and backtick inside the parentheses; close with ".\`)"
+
+This creates or overwrites the narrative priority associated with that key.
+
+## STORY CONTINUATION (REQUIRED)
+- After the closing parenthesis, write **one space** and then continue the story
+- ${povData[pov].continuation}
+- The story continues where it previously left off, with many lines or sentences of new prose
+
+## EXACT SHAPE
+(example_key = \`Story Director's planning note in one sentence.\`) ${povData[pov].assignShape}
+</SYSTEM>
+            `;
+            
+            const buildChoice = (pov) => `
+<SYSTEM>
+# STRICT OUTPUT FORMAT - FOLLOW EXACTLY
+
+You must output **one and only one** parenthetical block followed by the story continuation.
+
+There are **three possible valid forms** of the parenthetical block:
+1) **Write or overwrite a priority:**
+   (any_key_name = \`One planning sentence.\`)
+
+2) **Rename an existing priority's key:**
+   (new_key_name = old_key_name)
+
+3) **Delete an existing priority:**
+   (delete key_name_to_forget)
+
+Only **one** of these may appear in any output.
+
+---
+
+## 1) THOUGHT-WRITING FORMAT
+Start your output **immediately** with:
+   **(any_key_name = \`One planning sentence.\`)**
+
+Inside the parentheses:
+- First the key:
+${shared.keyRulesFancy}
+- Then a space, then "=", then a space, then "\`".
+- Then **ONE SINGLE SENTENCE (STORY DIRECTOR'S PLANNING NOTE):**
+${shared.planningNote(true)}
+- End the sentence with a period and backtick **inside** the parentheses; close with ".\`)".
+
+This creates or overwrites the narrative priority associated with that key.
+
+---
+
+${shared.renameSection}
+
+---
+
+${shared.deleteSection}
+
+---
+
+## SHARED RULES FOR ALL THREE FORMS
+1. After the closing parenthesis, write **one space** and then continue the story.
+2. The story continuation must be ${povData[pov].storyRule}.
+3. Do **NOT** write anything before the parentheses.
+4. Do **NOT** write extra parentheses.
+5. Do **NOT** use more than one operation per turn.
+6. Do **NOT** invent new structures or mix formats.
+7. The story continues where it previously left off, with many sentences of brand new prose.
+
+---
+
+${shared.storageBehavior}
+
+---
+
+## SUMMARY OF WHAT YOU MUST DO
+- EXACT SHAPE (choose only one form):
+  1. (plot_note = \`Story Director's planning sentence.\`) Story continues from ${ownership(config.player)} ${povData[pov].person} PoV...
+  2. (renamed_key = old_key) Story continues from ${ownership(config.player)} ${povData[pov].person} PoV...
+  3. (delete unwanted_key) Story continues from ${ownership(config.player)} ${povData[pov].person} PoV...
+- Planning note: Story Director's meta-narrative planning sentence.
+- Story: ${povData[pov].summaryStory} The story continuation should occupy the majority of the output length, with multiple lines.
+- NO EXTRA SENTENCES IN THE PLANNING NOTE.
+- NO EXTRA TEXT ANYWHERE.
+- NO EXTRA PARENTHESES.
+- THE FIRST CHAR OF THE WHOLE OUTPUT MUST BE "(".
+
+Follow the format **perfectly**.
+</SYSTEM>
+            `;
+            
             /**
-             * Prompt templates for different task types and PoV combinations
-             * Wrapped in a Proxy for auto-trimming and nested access because it's pretty :3
+             * Prompt templates using builder functions
+             * Wrapped in a Proxy for auto-trimming and nested access
              * @type {Object}
              */
             const prompt = new Proxy({
-                // Operating environment prompts (one per PoV)
                 directive: {
-                    first: () => `
-<SYSTEM>
-# OPERATING ENVIRONMENT
-- ${config.player} is the story's main protagonist, primary 1st person PoV, AND the real player character
-- You are the Story Director - an agentic narrative planner with meta-level story awareness
-- Your brain (shown below) contains active narrative priorities that guide story development
-- **Actively incorporate the brain's priorities into your story continuation**
-- Use the brain to maintain plot threads, track foreshadowing, manage pacing, and plan future beats
-- You prioritize long-term narrative coherence and engaging storytelling
-</SYSTEM>
-                    `,
-                    second: () => `
-<SYSTEM>
-# OPERATING ENVIRONMENT
-- ${config.player} is the perspective ("you") character AND the real player
-- The story is addressed to "you" using 2nd person prose
-- You are the Story Director - an agentic narrative planner with meta-level story awareness
-- Your brain (shown below) contains active narrative priorities that guide story development
-- **Actively incorporate the brain's priorities into your story continuation**
-- Use the brain to maintain plot threads, track foreshadowing, manage pacing, and plan future beats
-- You prioritize long-term narrative coherence and engaging storytelling
-</SYSTEM>
-                    `,
-                    third: () => `
-<SYSTEM>
-# OPERATING ENVIRONMENT
-- ${config.player} is the story's main protagonist, primary 3rd person PoV, AND the real player character
-- You are the Story Director - an agentic narrative planner with meta-level story awareness
-- Your brain (shown below) contains active narrative priorities that guide story development
-- **Actively incorporate the brain's priorities into your story continuation**
-- Use the brain to maintain plot threads, track foreshadowing, manage pacing, and plan future beats
-- You prioritize long-term narrative coherence and engaging storytelling
-</SYSTEM>
-                    `
+                    first: () => buildDirective('first'),
+                    second: () => buildDirective('second'),
+                    third: () => buildDirective('third')
                 },
-                // Forget prompts for when the brain is full and needs pruning
                 forget: {
-                    first: () => `
-<SYSTEM>
-# STRICT OUTPUT FORMAT
-You must output one short parenthetical task followed by the story continuation.
-
-## SHORT TASK (REQUIRED)
-- Start your output **immediately** with: (delete key_name_to_forget)
-- key_name_to_forget must be an existing key in the Story Director's brain
-- This operation **permanently erases** the stored narrative priority associated with that key
-- Choose the single most unimportant, outdated, incorrect, useless, or fully resolved narrative priority to forget
-- Do **NOT** delete core narrative priorities, important ongoing plot threads, or unresolved story elements
-
-## STORY CONTINUATION (REQUIRED)
-- After the closing parenthesis, write **one space** and then continue the story
-- Written from ${ownership(config.player)} **first person present tense** PoV
-- The story continues where it previously left off, with many lines or sentences of new prose
-
-## EXACT SHAPE
-(delete unwanted_key) Story continues from ${ownership(config.player)} perspective, using first person present tense prose...
-</SYSTEM>
-                    `,
-                    second: () => `
-<SYSTEM>
-# STRICT OUTPUT FORMAT
-You must output one short parenthetical task followed by the story continuation.
-
-## SHORT TASK (REQUIRED)
-- Start your output **immediately** with: (delete key_name_to_forget)
-- key_name_to_forget must be an existing key in the Story Director's brain
-- This operation **permanently erases** the stored narrative priority associated with that key
-- Choose the single most unimportant, outdated, incorrect, useless, or fully resolved narrative priority to forget
-- Do **NOT** delete core narrative priorities, important ongoing plot threads, or unresolved story elements
-
-## STORY CONTINUATION (REQUIRED)
-- After the closing parenthesis, write **one space** and then continue the story
-- Written from ${ownership(config.player)} **second person present tense** ("you") PoV
-- The story continues where it previously left off, with many lines or sentences of new prose
-
-## EXACT SHAPE
-(delete unwanted_key) Story continues from ${ownership(config.player)} second person perspective...
-</SYSTEM>
-                    `,
-                    third: () => `
-<SYSTEM>
-# STRICT OUTPUT FORMAT
-You must output one short parenthetical task followed by the story continuation.
-
-## SHORT TASK (REQUIRED)
-- Start your output **immediately** with: (delete key_name_to_forget)
-- key_name_to_forget must be an existing key in the Story Director's brain
-- This operation **permanently erases** the stored narrative priority associated with that key
-- Choose the single most unimportant, outdated, incorrect, useless, or fully resolved narrative priority to forget
-- Do **NOT** delete core narrative priorities, important ongoing plot threads, or unresolved story elements
-
-## STORY CONTINUATION (REQUIRED)
-- After the closing parenthesis, write **one space** and then continue the story
-- Written from ${ownership(config.player)} **third person** PoV
-- The story continues where it previously left off, with many lines or sentences of new prose
-
-## EXACT SHAPE
-(delete unwanted_key) Story continues with third person prose...
-</SYSTEM>
-                    `
+                    first: () => buildForget('first'),
+                    second: () => buildForget('second'),
+                    third: () => buildForget('third')
                 },
-                // Assign prompts for adding/updating a single thought
                 assign: {
-                    first: () => `
-<SYSTEM>
-# STRICT OUTPUT FORMAT
-You must output one short parenthetical task followed by the story continuation.
-
-## SHORT TASK (REQUIRED)
-Start your output **immediately** with:
-   (any_key_name = \`One planning sentence.\`)
-
-Inside the parentheses:
-- Key:
-  - 1-4 descriptive words describing the narrative element
-  - Letters and underscores only
-  - Use snake_case syntax
-  - Examples: plot_tension, foreshadow_event, pacing_note, unresolved_thread, next_conflict
-- Then a space, then "=", then a space, then "\`"
-- Sentence (THE STORY DIRECTOR'S PLANNING NOTE):
-  - Written from the Story Director's meta-narrative perspective${refocus(false)}
-  - Track plot threads, pacing, foreshadowing, or unresolved elements
-  - Plan future story beats or important developments
-  - One sentence only
-  - Never hallucinate facts
-- End the sentence with a period and backtick inside the parentheses; close with ".\`)"
-
-This creates or overwrites the narrative priority associated with that key.
-
-## STORY CONTINUATION (REQUIRED)
-- After the closing parenthesis, write **one space** and then continue the story
-- Written from ${ownership(config.player)} **first person present tense** PoV
-- The story continues where it previously left off, with many lines or sentences of new prose
-
-## EXACT SHAPE
-(plot_thread = \`Need to introduce the antagonist in the next few scenes.\`) I walk into the tavern and notice...
-</SYSTEM>
-                    `,
-                    second: () => `
-<SYSTEM>
-# STRICT OUTPUT FORMAT
-You must output one short parenthetical task followed by the story continuation.
-
-## SHORT TASK (REQUIRED)
-Start your output **immediately** with:
-   (any_key_name = \`One planning sentence.\`)
-
-Inside the parentheses:
-- Key:
-  - 1-4 descriptive words describing the narrative element
-  - Letters and underscores only
-  - Use snake_case syntax
-  - Examples: plot_tension, foreshadow_event, pacing_note, unresolved_thread, next_conflict
-- Then a space, then "=", then a space, then "\`"
-- Sentence (THE STORY DIRECTOR'S PLANNING NOTE):
-  - Written from the Story Director's meta-narrative perspective${refocus(false)}
-  - Track plot threads, pacing, foreshadowing, or unresolved elements
-  - Plan future story beats or important developments
-  - One sentence only
-  - Never hallucinate facts
-- End the sentence with a period and backtick inside the parentheses; close with ".\`)"
-
-This creates or overwrites the narrative priority associated with that key.
-
-## STORY CONTINUATION (REQUIRED)
-- After the closing parenthesis, write **one space** and then continue the story
-- Written from ${ownership(config.player)} **second person** ("you") perspective
-- The story continues where it previously left off, with many lines or sentences of new prose
-
-## EXACT SHAPE
-(plot_thread = \`Need to introduce the antagonist in the next few scenes.\`) You walk into the tavern and notice...
-</SYSTEM>
-                    `,
-                    third: () => `
-<SYSTEM>
-# STRICT OUTPUT FORMAT
-You must output one short parenthetical task followed by the story continuation.
-
-## SHORT TASK (REQUIRED)
-Start your output **immediately** with:
-   (any_key_name = \`One planning sentence.\`)
-
-Inside the parentheses:
-- Key:
-  - 1-4 descriptive words describing the narrative element
-  - Letters and underscores only
-  - Use snake_case syntax
-  - Examples: plot_tension, foreshadow_event, pacing_note, unresolved_thread, next_conflict
-- Then a space, then "=", then a space, then "\`"
-- Sentence (THE STORY DIRECTOR'S PLANNING NOTE):
-  - Written from the Story Director's meta-narrative perspective${refocus(false)}
-  - Track plot threads, pacing, foreshadowing, or unresolved elements
-  - Plan future story beats or important developments
-  - One sentence only
-  - Never hallucinate facts
-- End the sentence with a period and backtick inside the parentheses; close with ".\`)"
-
-This creates or overwrites the narrative priority associated with that key.
-
-## STORY CONTINUATION (REQUIRED)
-- After the closing parenthesis, write **one space** and then continue the story
-- Written from ${ownership(config.player)} **third person** perspective
-- The story continues where it previously left off, with many lines or sentences of new prose
-
-## EXACT SHAPE
-(plot_thread = \`Need to introduce the antagonist in the next few scenes.\`) ${config.player} walks into the tavern and notices...
-</SYSTEM>
-                    `
+                    first: () => buildAssign('first'),
+                    second: () => buildAssign('second'),
+                    third: () => buildAssign('third')
                 },
-                // Choice prompts for advanced operations (assign, rename, or delete)
-                // Used at high context when we trust the model more
                 choice: {
-                    first: () => `
-<SYSTEM>
-# STRICT OUTPUT FORMAT - FOLLOW EXACTLY
-
-You must output **one and only one** parenthetical block followed by the story continuation.
-
-There are **three possible valid forms** of the parenthetical block:
-1) **Write or overwrite a priority:**
-   (any_key_name = \`One planning sentence.\`)
-
-2) **Rename an existing priority's key:**
-   (new_key_name = old_key_name)
-
-3) **Delete an existing priority:**
-   (delete key_name_to_forget)
-
-Only **one** of these may appear in any output.
-
----
-
-## 1) THOUGHT-WRITING FORMAT
-Start your output **immediately** with:
-   **(any_key_name = \`One planning sentence.\`)**
-
-Inside the parentheses:
-- First the key:
-  - One to four descriptive words describing the narrative element.
-  - Letters and underscores only, no punctuation.
-  - Use valid snake_case syntax.
-  - Examples: plot_tension, foreshadow_event, pacing_note, unresolved_thread
-- Then a space, then "=", then a space, then "\`".
-- Then **ONE SINGLE SENTENCE (STORY DIRECTOR'S PLANNING NOTE):**
-  - Written from the Story Director's meta-narrative perspective.${refocus(true)}
-  - Track plot threads, pacing, foreshadowing, or unresolved elements
-  - Plan future story beats or important developments
-  - Never repeat, novelty and uniqueness are top priorities.
-  - Must be short.
-  - Never hallucinate facts.
-- End the sentence with a period and backtick **inside** the parentheses; close with ".\`)".
-
-This creates or overwrites the narrative priority associated with that key.
-
----
-
-## 2) RENAMING A THOUGHT (KEY CHANGE)
-To rename an existing thought's key:
-   **(new_key_name = old_key_name)**
-
-Rules:
-- No thought sentence.
-- Use snake_case only.
-- This operation **moves the existing stored thought** from old_key_name to new_key_name.
-- The old key ceases to exist.
-
----
-
-## 3) DELETING A THOUGHT
-To remove a stored thought entirely:
-   **(delete key_name_to_forget)**
-
-Rules:
-- key_name_to_forget must be an existing key.
-- No sentence.
-- This operation **permanently erases** the stored narrative priority associated with that key.
-- Only use to forget unimportant, fully resolved, outdated, incorrect, or useless narrative priorities.
-- **NEVER** delete core narrative priorities, important ongoing plot threads, or critical unresolved story elements.
-
----
-
-## SHARED RULES FOR ALL THREE FORMS
-1. After the closing parenthesis, write **one space** and then continue the story.
-2. The story continuation must be written **strictly in the first person present tense**, describing what happens next to ${config.player}.
-3. Do **NOT** write anything before the parentheses.
-4. Do **NOT** write extra parentheses.
-5. Do **NOT** use more than one operation per turn.
-6. Do **NOT** invent new structures or mix formats.
-7. The story continues where it previously left off, with many sentences of brand new prose.
-
----
-
-## IMPORTANT STORAGE BEHAVIOR
-- The Story Director agentically maintains narrative priorities to plan and guide story development.
-- **Each key stores exactly one narrative priority in the Story Director's brain.**
-- **If a key is reused, the new priority REPLACES / OVERRIDES the older priority stored under that key.**
-- This means:
-  - Reusing an old key: **Update an existing narrative priority.** Useful for tracking evolving plot threads.
-  - Using a new key: **Create a new narrative priority.** Useful for planning future beats, tracking foreshadowing, managing pacing.
-- **Renaming a key moves the priority to a new name.** Useful for reorganizing the brain.
-- **Deleting a key removes the priority permanently.** Should RARELY be used - only for truly obsolete or fully resolved plot threads.
-- Choose keys carefully. **Deletion should be avoided unless absolutely necessary.** Most priorities should be updated, not deleted.
-
----
-
-## SUMMARY OF WHAT YOU MUST DO
-- EXACT SHAPE (choose only one form):
-  1. (plot_note = \`Story Director's planning sentence.\`) Story continues from ${ownership(config.player)} first person PoV...
-  2. (renamed_key = old_key) Story continues from ${ownership(config.player)} first person PoV...
-  3. (delete unwanted_key) Story continues from ${ownership(config.player)} first person PoV...
-- Planning note: Story Director's meta-narrative planning sentence.
-- Story: Written from ${ownership(config.player)} first person present tense perspective. The story continuation should occupy the majority of the output length, with multiple lines.
-- NO EXTRA SENTENCES IN THE PLANNING NOTE.
-- NO EXTRA TEXT ANYWHERE.
-- NO EXTRA PARENTHESES.
-- THE FIRST CHAR OF THE WHOLE OUTPUT MUST BE "(".
-
-Follow the format **perfectly**.
-</SYSTEM>
-                    `,
-                    second: () => `
-<SYSTEM>
-# STRICT OUTPUT FORMAT - FOLLOW EXACTLY
-
-You must output **one and only one** parenthetical block followed by the story continuation.
-
-There are **three possible valid forms** of the parenthetical block:
-1) **Write or overwrite a priority:**
-   (any_key_name = \`One planning sentence.\`)
-
-2) **Rename an existing priority's key:**
-   (new_key_name = old_key_name)
-
-3) **Delete an existing priority:**
-   (delete key_name_to_forget)
-
-Only **one** of these may appear in any output.
-
----
-
-## 1) THOUGHT-WRITING FORMAT
-Start your output **immediately** with:
-   **(any_key_name = \`One planning sentence.\`)**
-
-Inside the parentheses:
-- First the key:
-  - One to four descriptive words describing the narrative element.
-  - Letters and underscores only, no punctuation.
-  - Use valid snake_case syntax.
-  - Examples: plot_tension, foreshadow_event, pacing_note, unresolved_thread
-- Then a space, then "=", then a space, then "\`".
-- Then **ONE SINGLE SENTENCE (STORY DIRECTOR'S PLANNING NOTE):**
-  - Written from the Story Director's meta-narrative perspective.${refocus(true)}
-  - Track plot threads, pacing, foreshadowing, or unresolved elements
-  - Plan future story beats or important developments
-  - Never repeat, novelty and uniqueness are top priorities.
-  - Must be short.
-  - Never hallucinate facts.
-- End the sentence with a period and backtick **inside** the parentheses; close with ".\`)".
-
-This creates or overwrites the narrative priority associated with that key.
-
----
-
-## 2) RENAMING A THOUGHT (KEY CHANGE)
-To rename an existing thought's key:
-   **(new_key_name = old_key_name)**
-
-Rules:
-- No thought sentence.
-- Use snake_case only.
-- This operation **moves the existing stored thought** from old_key_name to new_key_name.
-- The old key ceases to exist.
-
----
-
-## 3) DELETING A THOUGHT
-To remove a stored thought entirely:
-   **(delete key_name_to_forget)**
-
-Rules:
-- key_name_to_forget must be an existing key.
-- No sentence.
-- This operation **permanently erases** the stored narrative priority associated with that key.
-- Only use to forget unimportant, fully resolved, outdated, incorrect, or useless narrative priorities.
-- **NEVER** delete core narrative priorities, important ongoing plot threads, or critical unresolved story elements.
-
----
-
-## SHARED RULES FOR ALL THREE FORMS
-1. After the closing parenthesis, write **one space** and then continue the story.
-2. The story continuation must be in **strict second person ("you")**, describing what happens next to ${config.player}.
-3. Do **NOT** write anything before the parentheses.
-4. Do **NOT** write extra parentheses.
-5. Do **NOT** use more than one operation per turn.
-6. Do **NOT** invent new structures or mix formats.
-7. The story continues where it previously left off, with many sentences of brand new prose.
-
----
-
-## IMPORTANT STORAGE BEHAVIOR
-- The Story Director agentically maintains narrative priorities to plan and guide story development.
-- **Each key stores exactly one narrative priority in the Story Director's brain.**
-- **If a key is reused, the new priority REPLACES / OVERRIDES the older priority stored under that key.**
-- This means:
-  - Reusing an old key: **Update an existing narrative priority.** Useful for tracking evolving plot threads.
-  - Using a new key: **Create a new narrative priority.** Useful for planning future beats, tracking foreshadowing, managing pacing, or identifying key new plot elements to remember.
-- **Renaming a key moves the priority to a new name.** Useful for reorganizing the brain.
-- **Deleting a key removes the priority permanently.** Useful for removing resolved or obsolete plot threads.
-- Choose keys carefully for easy recall, update, rename, or delete as the story evolves.
-
----
-
-## SUMMARY OF WHAT YOU MUST DO
-- EXACT SHAPE (choose only one form):
-  1. (plot_note = \`Story Director's planning sentence.\`) Story continues from ${ownership(config.player)} second person PoV...
-  2. (renamed_key = old_key) Story continues from ${ownership(config.player)} second person PoV...
-  3. (delete unwanted_key) Story continues from ${ownership(config.player)} second person PoV...
-- Planning note: Story Director's meta-narrative planning sentence.
-- Story: Written from ${ownership(config.player)} second person present tense perspective. **You are ${config.player}.** The story continuation should occupy the majority of the output length, with multiple lines.
-- NO EXTRA SENTENCES IN THE PLANNING NOTE.
-- NO EXTRA TEXT ANYWHERE.
-- NO EXTRA PARENTHESES.
-- THE FIRST CHAR OF THE WHOLE OUTPUT MUST BE "(".
-
-Follow the format **perfectly**.
-</SYSTEM>
-                    `,
-                    third: () => `
-<SYSTEM>
-# STRICT OUTPUT FORMAT - FOLLOW EXACTLY
-
-You must output **one and only one** parenthetical block followed by the story continuation.
-
-There are **three possible valid forms** of the parenthetical block:
-1) **Write or overwrite a priority:**
-   (any_key_name = \`One planning sentence.\`)
-
-2) **Rename an existing priority's key:**
-   (new_key_name = old_key_name)
-
-3) **Delete an existing priority:**
-   (delete key_name_to_forget)
-
-Only **one** of these may appear in any output.
-
----
-
-## 1) THOUGHT-WRITING FORMAT
-Start your output **immediately** with:
-   **(any_key_name = \`One planning sentence.\`)**
-
-Inside the parentheses:
-- First the key:
-  - One to four descriptive words describing the narrative element.
-  - Letters and underscores only, no punctuation.
-  - Use valid snake_case syntax.
-  - Examples: plot_tension, foreshadow_event, pacing_note, unresolved_thread
-- Then a space, then "=", then a space, then "\`".
-- Then **ONE SINGLE SENTENCE (STORY DIRECTOR'S PLANNING NOTE):**
-  - Written from the Story Director's meta-narrative perspective.${refocus(true)}
-  - Track plot threads, pacing, foreshadowing, or unresolved elements
-  - Plan future story beats or important developments
-  - Never repeat, novelty and uniqueness are top priorities.
-  - Must be short.
-  - Never hallucinate facts.
-- End the sentence with a period and backtick **inside** the parentheses; close with ".\`)".
-
-This creates or overwrites the narrative priority associated with that key.
-
----
-
-## 2) RENAMING A THOUGHT (KEY CHANGE)
-To rename an existing thought's key:
-   **(new_key_name = old_key_name)**
-
-Rules:
-- No thought sentence.
-- Use snake_case only.
-- This operation **moves the existing stored thought** from old_key_name to new_key_name.
-- The old key ceases to exist.
-
----
-
-## 3) DELETING A THOUGHT
-To remove a stored thought entirely:
-   **(delete key_name_to_forget)**
-
-Rules:
-- key_name_to_forget must be an existing key.
-- No sentence.
-- This operation **permanently erases** the stored narrative priority associated with that key.
-- Only use to forget unimportant, fully resolved, outdated, incorrect, or useless narrative priorities.
-- **NEVER** delete core narrative priorities, important ongoing plot threads, or critical unresolved story elements.
-
----
-
-## SHARED RULES FOR ALL THREE FORMS
-1. After the closing parenthesis, write **one space** and then continue the story.
-2. The story continuation must be written **strictly in third person**.
-3. Do **NOT** write anything before the parentheses.
-4. Do **NOT** write extra parentheses.
-5. Do **NOT** use more than one operation per turn.
-6. Do **NOT** invent new structures or mix formats.
-7. The story continues where it previously left off, with many sentences of brand new prose.
-
----
-
-## IMPORTANT STORAGE BEHAVIOR
-- The Story Director agentically maintains narrative priorities to plan and guide story development.
-- **Each key stores exactly one narrative priority in the Story Director's brain.**
-- **If a key is reused, the new priority REPLACES / OVERRIDES the older priority stored under that key.**
-- This means:
-  - Reusing an old key: **Update an existing narrative priority.** Useful for tracking evolving plot threads.
-  - Using a new key: **Create a new narrative priority.** Useful for planning future beats, tracking foreshadowing, managing pacing.
-- **Renaming a key moves the priority to a new name.** Useful for reorganizing the brain.
-- **Deleting a key removes the priority permanently.** Should RARELY be used - only for truly obsolete or fully resolved plot threads.
-- Choose keys carefully. **Deletion should be avoided unless absolutely necessary.** Most priorities should be updated, not deleted.
-
----
-
-## SUMMARY OF WHAT YOU MUST DO
-- EXACT SHAPE (choose only one form):
-  1. (plot_note = \`Story Director's planning sentence.\`) Story continues with third person prose...
-  2. (renamed_key = old_key) Story continues with third person prose...
-  3. (delete unwanted_key) Story continues with third person prose...
-- Planning note: Story Director's meta-narrative planning sentence.
-- Story: Written from ${ownership(config.player)} PoV, using the third person perspective. **${config.player} is the story's PoV character.** The story continuation should occupy the majority of the output length, with multiple lines.
-- NO EXTRA SENTENCES IN THE PLANNING NOTE.
-- NO EXTRA TEXT ANYWHERE.
-- NO EXTRA PARENTHESES.
-- THE FIRST CHAR OF THE WHOLE OUTPUT MUST BE "(".
-
-Follow the format **perfectly**.
-</SYSTEM>
-                    `
+                    first: () => buildChoice('first'),
+                    second: () => buildChoice('second'),
+                    third: () => buildChoice('third')
                 }
             // Proxy handler for auto-trimming and nested access
             }, { get(t, p) { return (
