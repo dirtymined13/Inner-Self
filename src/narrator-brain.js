@@ -8345,6 +8345,8 @@ function AutoCards(inHook, inText, inStop) {
     }
 } function isolateLSIv2(code, log, text, stop) { const console = Object.freeze({log}); try { eval(code); return [null, text, stop]; } catch (error) { return [error, text, stop]; } }
 
-// Don't modify this part
-NarratorBrain(text);
+// Call NarratorBrain from each hook file:
+// input.js:   NarratorBrain("input");
+// output.js:  NarratorBrain("output");
+// context.js: NarratorBrain("context");
 
